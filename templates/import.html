@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Import Progress — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Import Progress</h1>
+
+  <div id="status" class="status">Starting…</div>
+  <div class="progress">
+    <div id="bar" class="progress-bar animated" style="width: 3%;"></div>
+  </div>
+  <div class="stats" id="summary">
+    <span>Processed: <b id="sDone">0</b> / <b id="sTotal">?</b></span>
+    <span>Created: <b id="sCreated">0</b></span>
+    <span>Updated: <b id="sUpdated">0</b></span>
+    <span>Failed: <b id="sFailed">0</b></span>
+  </div>
+  <div id="skipped" class="hint" style="display:none;"></div>
+
+  <h3>Results</h3>
+  <div class="table-wrap" id="resultsScroller">
+    <table id="eventsTable">
+      <thead>
+        <tr>
+          <th style="width:90px;">Result</th>
+          <th style="width:120px;">ID</th>
+          <th>Title</th>
+          <th style="width:70px;">Locale</th>
+          <th style="width:60px;">Draft</th>
+          <th style="width:130px;">Section</th>
+          <th>Link / Error</th>
+        </tr>
+      </thead>
+      <tbody id="eventsBody"></tbody>
+    </table>
+  </div>
+
+  <div id="error" class="error-box"></div>
+
+  <div class="actions">
+    <a href="{{ url_for('index') }}" class="btn secondary">Back</a>
+    <button type="button" id="pauseBtn" class="btn secondary">Pause auto-scroll</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const jobId = "{{ job_id }}";
+  const statusEl = document.getElementById('status');
+  const barEl = document.getElementById('bar');
+  const bodyEl = document.getElementById('eventsBody');
+  const scroller = document.getElementById('resultsScroller');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const errEl = document.getElementById('error');
+
+  let lastRendered = 0;
+  let autoscroll = true;
+
+  pauseBtn.addEventListener('click', () => {
+    autoscroll = !autoscroll;
+    pauseBtn.textContent = autoscroll ? 'Pause auto-scroll' : 'Resume auto-scroll';
+  });
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function badge(type) {
+    const label = type ? (type.charAt(0).toUpperCase() + type.slice(1)) : 'Info';
+    return `<span class="badge ${esc(type)}">${label}</span>`;
+  }
+
+  function renderEvents(evts) {
+    for (let i = lastRendered; i < evts.length; i++) {
+      const e = evts[i] || {};
+      let linkOrError = '';
+      if (e.type === 'failed') {
+        linkOrError = `<span class="text-danger">${esc(e.error)}</span>`;
+      } else if (e.html_url) {
+        linkOrError = `<a href="${esc(e.html_url)}" target="_blank" rel="noopener">Open</a>`;
+      }
+      bodyEl.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td>${badge(e.type || 'info')}</td>
+          <td>${esc(e.id)}</td>
+          <td>${esc(e.title)}</td>
+          <td>${esc(e.locale)}</td>
+          <td>${e.draft === true ? 'yes' : (e.draft === false ? 'no' : '')}</td>
+          <td>${esc(e.section_id)}</td>
+          <td>${linkOrError}</td>
+        </tr>`);
+    }
+    lastRendered = evts.length;
+    if (autoscroll) scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  function counts(evts) {
+    const c = { created: 0, updated: 0, failed: 0 };
+    for (const e of evts) if (e && c[e.type] !== undefined) c[e.type]++;
+    return c;
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch(`/import_progress/${jobId}`, { cache: 'no-store' });
+      const j = await r.json();
+
+      statusEl.textContent = j.message || j.status || '';
+      const total = j.total_articles || 0;
+      const done  = j.processed_articles || 0;
+      const finished = j.status === 'completed' || j.status === 'error';
+      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : (finished ? 100 : 3);
+      barEl.style.width = Math.max(pct, 3) + '%';
+      barEl.textContent = total > 0 || finished ? pct + '%' : '';
+
+      const events = j.events || [];
+      renderEvents(events);
+      const c = counts(events);
+      document.getElementById('sDone').textContent = done;
+      document.getElementById('sTotal').textContent = total || '?';
+      document.getElementById('sCreated').textContent = c.created;
+      document.getElementById('sUpdated').textContent = c.updated;
+      document.getElementById('sFailed').textContent = c.failed;
+
+      if (j.skipped_files && j.skipped_files.length) {
+        const s = document.getElementById('skipped');
+        s.style.display = 'block';
+        s.textContent = 'Skipped (unsupported type): ' + j.skipped_files.join(', ');
+      }
+
+      if (j.status === 'completed') {
+        barEl.classList.remove('animated');
+        return;
+      }
+      if (j.status === 'error') {
+        barEl.classList.remove('animated');
+        barEl.classList.add('error');
+        errEl.style.display = 'block';
+        errEl.textContent = j.error || 'Import failed';
+        return;
+      }
+    } catch (e) {
+      console.error(e);
+      statusEl.textContent = 'Lost contact with the app. Is it still running?';
+      return;
+    }
+    setTimeout(poll, 1200);
+  }
+
+  poll();
+})();
+</script>
+{% endblock %}

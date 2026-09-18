@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Export Progress — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Export Progress</h1>
+
+  <div id="status" class="status">Starting…</div>
+  <div class="progress">
+    <div id="bar" class="progress-bar animated" style="width: 5%;"></div>
+  </div>
+  <div class="stats">
+    <span>Sections: <b id="secDone">0</b> / <b id="secTotal">?</b></span>
+    <span>Articles found: <b id="articles">0</b></span>
+  </div>
+
+  <div id="results" style="display:none;">
+    <h3>Exported files</h3>
+    <ul id="files" class="file-list"></ul>
+    <div class="hint">Files are also saved in the <code>exports</code> folder next to the app.</div>
+  </div>
+
+  <div id="error" class="error-box"></div>
+
+  <div class="actions">
+    <a href="{{ url_for('index') }}" class="btn secondary">Back</a>
+  </div>
+</div>
+
+<script>
+(async function poll() {
+  const bar = document.getElementById("bar");
+  try {
+    const res = await fetch("/progress/{{ job_id }}", { cache: "no-store" });
+    const data = await res.json();
+
+    document.getElementById("status").textContent = data.message || data.status || "";
+    document.getElementById("secDone").textContent = data.sections_done || 0;
+    document.getElementById("secTotal").textContent = data.sections_total || "?";
+    document.getElementById("articles").textContent = data.articles || 0;
+
+    const done = data.status === "completed";
+    const errored = data.status === "error";
+
+    if (done) {
+      bar.classList.remove("animated");
+      bar.style.width = "100%";
+      bar.textContent = "Done";
+      const ul = document.getElementById("files");
+      ul.innerHTML = "";
+      (data.files || []).forEach(f => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span>${f.name}</span><a href="${f.url}" class="btn small">Download</a>`;
+        ul.appendChild(li);
+      });
+      document.getElementById("results").style.display = "block";
+      return;
+    }
+    if (errored) {
+      bar.classList.remove("animated");
+      bar.classList.add("error");
+      bar.style.width = "100%";
+      bar.textContent = "Error";
+      const e = document.getElementById("error");
+      e.style.display = "block";
+      e.textContent = data.error || "Export failed";
+      return;
+    }
+
+    const total = data.sections_total || 0;
+    const pct = total > 0 ? Math.max(5, Math.round(((data.sections_done || 0) / total) * 95)) : 5;
+    bar.style.width = pct + "%";
+    setTimeout(poll, 1200);
+  } catch (err) {
+    console.error(err);
+    const e = document.getElementById("error");
+    e.style.display = "block";
+    e.textContent = "Lost contact with the app. Is it still running?";
+  }
+})();
+</script>
+{% endblock %}

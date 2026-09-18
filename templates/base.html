@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="wrap">
+    <header class="app-header">
+      <a class="brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='circle-icon-tm.png') }}" alt="" class="brand-logo" />
+        <span>
+          <span class="brand-title">{{ app_name }}</span>
+          <span class="brand-subtitle">Help Centre export and import · v{{ app_version }}</span>
+        </span>
+      </a>
+      <button class="btn secondary small" type="button" id="btnQuit" title="Stop the local server">Quit</button>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash {% if category == 'error' %}flash-error{% endif %}">{{ message }}</div>
+        {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    <footer class="app-footer">TechWitch Ltd · runs only on this machine, credentials are never stored on disk.</footer>
+  </div>
+  <script>
+    document.getElementById('btnQuit').addEventListener('click', async () => {
+      if (!confirm('Stop the app? You can start it again from the launcher.')) return;
+      try { await fetch('/shutdown', { method: 'POST' }); } catch (e) {}
+      document.body.innerHTML = '<div class="wrap"><div class="card"><h2>Stopped</h2><p>You can close this tab.</p></div></div>';
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

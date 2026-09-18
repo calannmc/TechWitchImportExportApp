@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — Export & Import{% endblock %}
+
+{% block content %}
+<!-- Credentials -->
+<div class="card">
+  <h2>Credentials</h2>
+  <div class="row">
+    <div>
+      <label for="subdomain">Zendesk subdomain</label>
+      <input id="subdomain" type="text" placeholder="acme  (for https://acme.zendesk.com)" autocomplete="off" />
+    </div>
+    <div>
+      <label for="email">Zendesk email</label>
+      <input id="email" type="email" placeholder="user@domain.com" autocomplete="off" />
+    </div>
+    <div>
+      <label for="api_token">Zendesk API token</label>
+      <input id="api_token" type="password" placeholder="Paste API token" autocomplete="off" />
+    </div>
+    <div class="fixed">
+      <button class="btn secondary" type="button" id="btnLoadBrands">Load brands</button>
+    </div>
+  </div>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="rememberCreds" /> Remember subdomain and email in this browser (the token is never saved)</label>
+  </div>
+  <div class="hint" id="credStatus">Auth: <code>email/token</code> + API token (Admin Center → Apps and integrations → APIs).</div>
+</div>
+
+<div class="grid">
+  <!-- EXPORT -->
+  <div class="card">
+    <h2>Export Help Centre</h2>
+
+    <form method="POST" action="{{ url_for('start_export') }}" onsubmit="return attachCredsExport(event)">
+      <div class="row">
+        <div>
+          <label for="export_type">Export type</label>
+          <select id="export_type" name="export_type">
+            <option value="excel">Excel (.xlsx, one row per article)</option>
+            <option value="word">Word (.zip of .docx, one per article, plus index.xlsx)</option>
+          </select>
+        </div>
+        <div>
+          <label for="export_brand_id">Brand (optional: limit export)</label>
+          <select id="export_brand_id">
+            <option value="">— All brands —</option>
+          </select>
+        </div>
+      </div>
+
+      <input type="hidden" name="subdomain" />
+      <input type="hidden" name="email" />
+      <input type="hidden" name="api_token" />
+      <input type="hidden" name="brand_id" />
+
+      <div class="sep"></div>
+      <button class="btn" type="submit">Start Export</button>
+      <div class="hint">Drafts are included. Progress appears on the next page; keep the tab open.</div>
+    </form>
+  </div>
+
+  <!-- IMPORT -->
+  <div class="card">
+    <h2>Import Articles</h2>
+    <form method="POST" action="{{ url_for('start_import') }}" enctype="multipart/form-data" onsubmit="return attachCredsAndValidateImport(event)">
+      <div class="row">
+        <div>
+          <label for="brandSelect">Brand</label>
+          <select id="brandSelect">
+            <option value="">— Load brands first —</option>
+          </select>
+        </div>
+        <div>
+          <label for="sectionSelect">Section</label>
+          <select id="sectionSelect" name="section_id">
+            <option value="">— Pick a brand first —</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="noSectionsBox" style="display:none; margin-top:10px;">
+        <div class="hint">No sections exist for this brand. Create a Category + Section now:</div>
+        <div class="row" style="margin-top:8px;">
+          <input id="newCategoryName" type="text" placeholder="Category name (e.g. Knowledge Base)" />
+          <input id="newSectionName" type="text" placeholder="Section name (e.g. Getting Started)" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <div>
+            <label for="newLocale">Locale</label>
+            <input id="newLocale" type="text" value="en-us" />
+          </div>
+          <div class="fixed">
+            <button class="btn" type="button" id="btnCreateCatSection">Create &amp; Use</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="update_existing">Update if existing?</label>
+          <select id="update_existing" name="update_existing">
+            <option value="true">Yes: update in place</option>
+            <option value="false" selected>No: always create</option>
+          </select>
+        </div>
+        <div>
+          <label for="update_labels_mode">Label strategy</label>
+          <select id="update_labels_mode" name="update_labels_mode">
+            <option value="merge" selected>Merge</option>
+            <option value="replace">Replace</option>
+          </select>
+        </div>
+        <div>
+          <label for="create_drafts">Create as drafts?</label>
+          <select id="create_drafts" name="create_drafts">
+            <option value="true" selected>Yes</option>
+            <option value="false">No (publish)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="default_locale">Default locale (used when a row has no locale)</label>
+          <select id="default_locale" name="default_locale">
+            <option value="en-us" selected>English (US) — en-us</option>
+            <option value="en-gb">English (UK) — en-gb</option>
+            <option value="fr">Français — fr</option>
+            <option value="de">Deutsch — de</option>
+            <option value="es">Español — es</option>
+            <option value="pt-br">Português (Brasil) — pt-br</option>
+            <option value="it">Italiano — it</option>
+            <option value="nl">Nederlands — nl</option>
+            <option value="sv">Svenska — sv</option>
+            <option value="fi">Suomi — fi</option>
+            <option value="no">Norsk — no</option>
+            <option value="da">Dansk — da</option>
+            <option value="ja">日本語 — ja</option>
+            <option value="ko">한국어 — ko</option>
+            <option value="zh-cn">中文(简体) — zh-cn</option>
+            <option value="zh-tw">中文(繁體) — zh-tw</option>
+            <option value="ar">العربية — ar</option>
+            <option value="he">עברית — he</option>
+          </select>
+          <div class="hint">If a row already has a <code>locale</code> value, that wins. Word files have none, so they get this one.</div>
+        </div>
+      </div>
+
+      <label for="import_file">Files to import (.xlsx / .xls / .docx)</label>
+      <input id="import_file" type="file" name="import_file" multiple accept=".xlsx,.xls,.docx" />
+
+      <input type="hidden" name="subdomain" />
+      <input type="hidden" name="email" />
+      <input type="hidden" name="api_token" />
+
+      <div class="sep"></div>
+      <button class="btn" type="submit">Start Import</button>
+      <div class="hint">Spreadsheet columns: <code>id</code>, <code>title</code>, <code>body</code>, <code>locale</code>, <code>labels</code>, <code>section_id</code>, <code>draft</code>, <code>promoted</code>. An export file works as-is.</div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Tips</h2>
+  <ul class="tips">
+    <li>Export can be limited to a Brand. Otherwise it scans everything the account host can see.</li>
+    <li>Import targets the selected Section (brand implied by the Section). A <code>section_id</code> column on a row overrides it.</li>
+    <li>Update-in-place finds existing articles by <em>ID</em>, then exact <em>title</em>, then overlapping <em>labels</em>.</li>
+    <li>A Word file becomes one article: the first heading (or first bold line) is the title, the rest is the body.</li>
+    <li>Files land in the <code>exports</code> folder next to the app.</li>
+  </ul>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const $ = s => document.querySelector(s);
+  const STORE_KEY = 'twzh_creds';
+
+  function readCreds() {
+    return {
+      subdomain: $('#subdomain').value.trim(),
+      email: $('#email').value.trim(),
+      api_token: $('#api_token').value.trim(),
+    };
+  }
+  function setStatus(msg, isError) {
+    const el = $('#credStatus');
+    el.textContent = msg;
+    el.style.color = isError ? 'var(--danger)' : '';
+  }
+  function saveCredsIfWanted() {
+    try {
+      if ($('#rememberCreds').checked) {
+        const { subdomain, email } = readCreds();
+        localStorage.setItem(STORE_KEY, JSON.stringify({ subdomain, email }));
+      } else {
+        localStorage.removeItem(STORE_KEY);
+      }
+    } catch (e) {}
+  }
+  function fillCreds(form) {
+    const { subdomain, email, api_token } = readCreds();
+    if (!subdomain || !email || !api_token) {
+      setStatus('Fill in subdomain, email and API token first.', true);
+      return false;
+    }
+    form.querySelector('input[name="subdomain"]').value = subdomain;
+    form.querySelector('input[name="email"]').value = email;
+    form.querySelector('input[name="api_token"]').value = api_token;
+    saveCredsIfWanted();
+    return true;
+  }
+  function attachCredsExport(e) {
+    const form = e.target;
+    if (!fillCreds(form)) { e.preventDefault(); return false; }
+    const sel = $('#export_brand_id');
+    form.querySelector('input[name="brand_id"]').value = sel && sel.value ? sel.value : '';
+    return true;
+  }
+  function attachCredsAndValidateImport(e) {
+    const form = e.target;
+    if (!fillCreds(form)) { e.preventDefault(); return false; }
+    const files = $('#import_file').files;
+    if (!files || files.length === 0) {
+      alert('Choose at least one file to import.');
+      e.preventDefault(); return false;
+    }
+    if (!$('#sectionSelect').value) {
+      if (!confirm('No Section selected. Continue only if your spreadsheet rows include a section_id column.')) {
+        e.preventDefault(); return false;
+      }
+    }
+    return true;
+  }
+
+  async function postJson(url, body) {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) throw new Error((data && data.error) || res.statusText || 'Request failed');
+    return data;
+  }
+
+  async function loadBrands() {
+    const creds = readCreds();
+    const brandSel = $('#brandSelect');
+    const exportBrandSel = $('#export_brand_id');
+    const btn = $('#btnLoadBrands');
+
+    if (!creds.subdomain || !creds.email || !creds.api_token) {
+      setStatus('Fill in subdomain, email and API token first.', true);
+      return;
+    }
+    btn.disabled = true; setStatus('Loading brands…');
+    try {
+      const brands = await postJson('/api/brands', creds);
+      const opts = brands.map(b => `<option value="${b.id}">${escapeHtml(b.name || ('Brand ' + b.id))}${b.active === false ? ' (inactive)' : ''}</option>`).join('');
+      brandSel.innerHTML = '<option value="">— Select a brand —</option>' + opts;
+      exportBrandSel.innerHTML = '<option value="">— All brands —</option>' + opts;
+      setStatus(`Connected. ${brands.length} brand${brands.length === 1 ? '' : 's'} found.`);
+      saveCredsIfWanted();
+      if (brands.length === 1) { brandSel.value = brands[0].id; loadSectionsForBrand(); }
+    } catch (err) {
+      console.error(err);
+      brandSel.innerHTML = '<option value="">Failed to load brands</option>';
+      exportBrandSel.innerHTML = '<option value="">— All brands —</option>';
+      setStatus('Failed to load brands: ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function loadSectionsForBrand() {
+    const brandSel = $('#brandSelect');
+    const sectionSel = $('#sectionSelect');
+    const box = $('#noSectionsBox');
+    const brand_id = brandSel.value;
+
+    box.style.display = 'none';
+    if (!brand_id) {
+      sectionSel.innerHTML = '<option value="">— Pick a brand first —</option>';
+      return;
+    }
+    sectionSel.innerHTML = '<option value="">Loading…</option>';
+
+    try {
+      const sections = await postJson('/api/sections_by_brand', { ...readCreds(), brand_id: Number(brand_id) });
+      if (!sections.length) {
+        sectionSel.innerHTML = '<option value="">— No sections yet —</option>';
+        box.style.display = 'block';
+        return;
+      }
+      sectionSel.innerHTML = sections.map(s =>
+        `<option value="${s.id}">${escapeHtml(s.name)} (Cat ${s.category_id})</option>`
+      ).join('');
+    } catch (err) {
+      console.error(err);
+      sectionSel.innerHTML = '<option value="">Failed to load sections</option>';
+      setStatus('Failed to load sections: ' + err.message, true);
+    }
+  }
+
+  async function createCatAndSection() {
+    const brand_id = $('#brandSelect').value;
+    const category_name = $('#newCategoryName').value.trim() || 'Knowledge Base';
+    const section_name  = $('#newSectionName').value.trim()  || 'Getting Started';
+    const locale        = $('#newLocale').value.trim() || 'en-us';
+    const sectionSel    = $('#sectionSelect');
+    const creds = readCreds();
+
+    if (!brand_id) { alert('Pick a brand first.'); return; }
+    if (!creds.subdomain || !creds.email || !creds.api_token) { alert('Enter credentials first.'); return; }
+
+    try {
+      const body = await postJson('/api/create_cat_and_section', { ...creds, brand_id: Number(brand_id), category_name, section_name, locale });
+      const opt = document.createElement('option');
+      opt.value = body.section_id;
+      opt.textContent = `${body.section_name} (Cat ${body.category_id})`;
+      sectionSel.innerHTML = '';
+      sectionSel.appendChild(opt);
+      sectionSel.value = body.section_id;
+      $('#noSectionsBox').style.display = 'none';
+      setStatus('Category and section created. You can import now.');
+    } catch (err) {
+      console.error(err);
+      alert('Create failed: ' + err.message);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    $('#btnLoadBrands').addEventListener('click', loadBrands);
+    $('#brandSelect').addEventListener('change', loadSectionsForBrand);
+    $('#btnCreateCatSection').addEventListener('click', (e) => { e.preventDefault(); createCatAndSection(); });
+    $('#rememberCreds').addEventListener('change', saveCredsIfWanted);
+    $('#api_token').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadBrands(); } });
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (saved) {
+        $('#subdomain').value = saved.subdomain || '';
+        $('#email').value = saved.email || '';
+        $('#rememberCreds').checked = true;
+        $('#api_token').focus();
+      }
+    } catch (e) {}
+  });
+</script>
+{% endblock %}
